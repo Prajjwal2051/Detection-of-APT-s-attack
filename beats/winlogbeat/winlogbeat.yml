@@ -1,0 +1,168 @@
+winlogbeat.event_logs:
+  # Security logs - critical for detecting authentication and authorization events
+  - name: Security
+    event_id: 4624, 4625, 4648, 4672, 4720, 4732, 4776, 5140
+    processors:
+      - script:
+          lang: javascript
+          source: >
+            function process(event) {
+              // Add custom fields for APT detection
+              event.Put("event.category", "authentication");
+              return event;
+            }
+    
+  # Sysmon logs - essential for APT detection
+  - name: Microsoft-Windows-Sysmon/Operational
+    processors:
+      - script:
+          lang: javascript
+          source: >
+            function process(event) {
+              var eventId = event.Get("winlog.event_id");
+              
+              // Process creation
+              if (eventId === 1) {
+                event.Put("event.category", "process");
+                event.Put("event.type", "start");
+              }
+              // Network connection
+              else if (eventId === 3) {
+                event.Put("event.category", "network");
+                event.Put("event.type", "connection");
+              }
+              // Process access (credential dumping indicator)
+              else if (eventId === 10) {
+                event.Put("event.category", "process");
+                event.Put("event.type", "access");
+              }
+              // File creation
+              else if (eventId === 11) {
+                event.Put("event.category", "file");
+                event.Put("event.type", "creation");
+              }
+              // Registry event
+              else if (eventId === 12 || eventId === 13 || eventId === 14) {
+                event.Put("event.category", "registry");
+              }
+              
+              return event;
+            }
+  
+  # Application logs
+  - name: Application
+    level: warning, error, critical
+    
+  # System logs
+  - name: System
+    level: warning, error, critical
+    
+  # PowerShell logs - crucial for detecting malicious scripts
+  - name: Microsoft-Windows-PowerShell/Operational
+    event_id: 4103, 4104
+    processors:
+      - script:
+          lang: javascript
+          source: >
+            function process(event) {
+              event.Put("event.category", "process");
+              event.Put("event.type", "info");
+              event.Put("powershell.execution", true);
+              return event;
+            }
+  
+  # PowerShell Script Block logging
+  - name: Windows PowerShell
+    event_id: 400, 403, 600, 800
+    
+  # Windows Defender logs
+  - name: Microsoft-Windows-Windows Defender/Operational
+    
+  # Remote Desktop Services
+  - name: Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+    processors:
+      - add_fields:
+          target: event
+          fields:
+            category: network
+            type: connection
+            protocol: rdp
+            
+  # Task Scheduler - used for persistence
+  - name: Microsoft-Windows-TaskScheduler/Operational
+    event_id: 106, 140, 141, 200, 201
+    
+  # WMI Activity - used for lateral movement and persistence
+  - name: Microsoft-Windows-WMI-Activity/Operational
+
+# Sample data ingestion (for testing with APT datasets)
+winlogbeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /sample-data/windows-*.evtx
+      - /sample-data/sysmon-*.log
+      - /sample-data/*.xml
+    fields:
+      log_source: sample_data
+      
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_locale: ~
+  - add_fields:
+      target: agent
+      fields:
+        type: winlogbeat
+        
+  # Enrich with MITRE ATT&CK techniques
+  - script:
+      lang: javascript
+      source: >
+        function process(event) {
+          var eventId = event.Get("winlog.event_id");
+          var provider = event.Get("winlog.provider_name");
+          
+          // Map events to MITRE ATT&CK
+          if (provider === "Microsoft-Windows-Sysmon") {
+            if (eventId === 10) {
+              var targetImage = event.Get("winlog.event_data.TargetImage");
+              if (targetImage && targetImage.toLowerCase().includes("lsass.exe")) {
+                event.Put("mitre.technique", "T1003.001");
+                event.Put("mitre.tactic", "Credential Access");
+                event.Put("threat.indicator.type", "credential_dumping");
+              }
+            }
+          }
+          
+          if (provider === "Microsoft-Windows-Security-Auditing") {
+            if (eventId === 4625) {
+              event.Put("mitre.technique", "T1110");
+              event.Put("mitre.tactic", "Credential Access");
+            }
+            else if (eventId === 4624) {
+              var logonType = event.Get("winlog.event_data.LogonType");
+              if (logonType === "3" || logonType === "10") {
+                event.Put("mitre.technique", "T1021");
+                event.Put("mitre.tactic", "Lateral Movement");
+              }
+            }
+          }
+          
+          return event;
+        }
+
+# Output to Logstash
+output.logstash:
+  hosts: ["logstash:5044"]
+  
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/winlogbeat
+  name: winlogbeat
+  keepfiles: 7
+  permissions: 0644

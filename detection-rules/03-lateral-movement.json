@@ -1,0 +1,245 @@
+{
+  "name": "Lateral Movement Detection",
+  "description": "Detects lateral movement activities including RDP, SMB, WMI, and PSExec usage",
+  "mitre_attack": {
+    "tactic": "Lateral Movement",
+    "techniques": ["T1021.001", "T1021.002", "T1021.003", "T1021.006", "T1047"]
+  },
+  "severity": "high",
+  "queries": [
+    {
+      "rule_name": "RDP Lateral Movement",
+      "description": "Detects suspicious RDP connections indicative of lateral movement",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "winlog.event_id": 4624
+                    }
+                  },
+                  {
+                    "term": {
+                      "winlog.event_data.LogonType": "10"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "bool": {
+                "must": [
+                  {
+                    "terms": {
+                      "destination.port": [3389]
+                    }
+                  },
+                  {
+                    "term": {
+                      "event.category": "network"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        {\n          \"bool\": {\n            \"must\": [\n              { \"term\": { \"winlog.event_id\": 4624 } },\n              { \"term\": { \"winlog.event_data.LogonType\": \"10\" } }\n            ]\n          }\n        },\n        {\n          \"bool\": {\n            \"must\": [\n              { \"terms\": { \"destination.port\": [3389] } },\n              { \"term\": { \"event.category\": \"network\" } }\n            ]\n          }\n        }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "SMB Lateral Movement",
+      "description": "Detects SMB-based lateral movement",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "winlog.event_id": 4624
+                    }
+                  },
+                  {
+                    "term": {
+                      "winlog.event_data.LogonType": "3"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "bool": {
+                "must": [
+                  {
+                    "terms": {
+                      "destination.port": [445, 139]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "term": {
+                "winlog.event_id": 5140
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        {\n          \"bool\": {\n            \"must\": [\n              { \"term\": { \"winlog.event_id\": 4624 } },\n              { \"term\": { \"winlog.event_data.LogonType\": \"3\" } }\n            ]\n          }\n        },\n        { \"bool\": { \"must\": [{ \"terms\": { \"destination.port\": [445, 139] } }] } },\n        { \"term\": { \"winlog.event_id\": 5140 } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "PSExec Detection",
+      "description": "Detects PSExec usage for lateral movement",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.Image": ".*psexec.*"
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.ServiceName": ".*PSEXESVC.*"
+              }
+            },
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "winlog.event_id": 7045
+                    }
+                  },
+                  {
+                    "regexp": {
+                      "winlog.event_data.ImagePath": ".*\\\\\\\\.*\\\\.*\\$\\\\.*"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.Image\": \".*psexec.*\" } },\n        { \"regexp\": { \"winlog.event_data.ServiceName\": \".*PSEXESVC.*\" } },\n        {\n          \"bool\": {\n            \"must\": [\n              { \"term\": { \"winlog.event_id\": 7045 } },\n              { \"regexp\": { \"winlog.event_data.ImagePath\": \".*\\\\\\\\\\\\\\\\.*\\\\\\\\.*\\\\$\\\\\\\\.*\" } }\n            ]\n          }\n        }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "WMI Lateral Movement",
+      "description": "Detects WMI-based lateral movement",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "winlog.event_id": 1
+                    }
+                  },
+                  {
+                    "regexp": {
+                      "winlog.event_data.ParentImage": ".*wmiprvse\\.exe"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*(wmic.*process call create|Invoke-WmiMethod).*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        {\n          \"bool\": {\n            \"must\": [\n              { \"term\": { \"winlog.event_id\": 1 } },\n              { \"regexp\": { \"winlog.event_data.ParentImage\": \".*wmiprvse\\\\.exe\" } }\n            ]\n          }\n        },\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*(wmic.*process call create|Invoke-WmiMethod).*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Multiple Failed Login Attempts",
+      "description": "Detects multiple failed login attempts followed by successful login (password spraying)",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "@timestamp": {
+                  "gte": "now-10m"
+                }
+              }
+            },
+            {
+              "term": {
+                "winlog.event_id": 4625
+              }
+            }
+          ]
+        }
+      },
+      "aggregation": {
+        "size": 0,
+        "aggs": {
+          "by_source_ip": {
+            "terms": {
+              "field": "source.ip",
+              "size": 50
+            },
+            "aggs": {
+              "failed_count": {
+                "value_count": {
+                  "field": "winlog.event_id"
+                }
+              },
+              "unique_users": {
+                "cardinality": {
+                  "field": "winlog.event_data.TargetUserName.keyword"
+                }
+              },
+              "alert_threshold": {
+                "bucket_selector": {
+                  "buckets_path": {
+                    "count": "failed_count"
+                  },
+                  "script": "params.count >= 5"
+                }
+              }
+            }
+          }
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"size\": 0,\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"range\": { \"@timestamp\": { \"gte\": \"now-10m\" } } },\n        { \"term\": { \"winlog.event_id\": 4625 } }\n      ]\n    }\n  },\n  \"aggs\": {\n    \"by_source_ip\": {\n      \"terms\": { \"field\": \"source.ip\", \"size\": 50 },\n      \"aggs\": {\n        \"failed_count\": { \"value_count\": { \"field\": \"winlog.event_id\" } },\n        \"unique_users\": { \"cardinality\": { \"field\": \"winlog.event_data.TargetUserName.keyword\" } },\n        \"alert_threshold\": {\n          \"bucket_selector\": {\n            \"buckets_path\": { \"count\": \"failed_count\" },\n            \"script\": \"params.count >= 5\"\n          }\n        }\n      }\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Admin Share Access",
+      "description": "Detects access to administrative shares (C$, ADMIN$, IPC$)",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "winlog.event_id": 5140
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.ShareName": ".*(C\\$|ADMIN\\$|IPC\\$).*"
+              }
+            }
+          ]
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"term\": { \"winlog.event_id\": 5140 } },\n        { \"regexp\": { \"winlog.event_data.ShareName\": \".*(C\\\\$|ADMIN\\\\$|IPC\\\\$).*\" } }\n      ]\n    }\n  }\n}"
+    }
+  ]
+}

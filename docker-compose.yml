@@ -1,0 +1,117 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - elk
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash/patterns:/usr/share/logstash/patterns:ro
+      - ./sample-data:/sample-data:ro
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xms1g -Xmx1g"
+    networks:
+      - elk
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+      - xpack.encryptedSavedObjects.encryptionKey=fhjskloppd678ehkdfdlliverpoolfcr
+      - xpack.reporting.encryptionKey=fhjskloppd678ehkdfdlliverpoolfcr
+      - xpack.security.encryptionKey=fhjskloppd678ehkdfdlliverpoolfcr
+    networks:
+      - elk
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: filebeat
+    user: root
+    volumes:
+      - ./beats/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./sample-data:/sample-data:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat-data:/usr/share/filebeat/data
+    command: filebeat -e -strict.perms=false
+    networks:
+      - elk
+    depends_on:
+      - logstash
+
+  # winlogbeat:
+  #   image: docker.elastic.co/beats/winlogbeat:8.11.0
+  #   container_name: winlogbeat
+  #   user: root
+  #   volumes:
+  #     - ./beats/winlogbeat/winlogbeat.yml:/usr/share/winlogbeat/winlogbeat.yml:ro
+  #     - ./sample-data:/sample-data:ro
+  #     - winlogbeat-data:/usr/share/winlogbeat/data
+  #   command: winlogbeat -e -strict.perms=false
+  #   networks:
+  #     - elk
+  #   depends_on:
+  #     - logstash
+
+  packetbeat:
+    image: docker.elastic.co/beats/packetbeat:8.11.0
+    container_name: packetbeat
+    user: root
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./beats/packetbeat/packetbeat.yml:/usr/share/packetbeat/packetbeat.yml:ro
+      - packetbeat-data:/usr/share/packetbeat/data
+    command: packetbeat -e -strict.perms=false
+    network_mode: host
+    depends_on:
+      - logstash
+
+volumes:
+  elasticsearch-data:
+    driver: local
+  filebeat-data:
+    driver: local
+  winlogbeat-data:
+    driver: local
+  packetbeat-data:
+    driver: local
+
+networks:
+  elk:
+    driver: bridge

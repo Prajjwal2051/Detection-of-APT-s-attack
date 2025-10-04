@@ -1,0 +1,114 @@
+packetbeat.interfaces.device: any
+
+# Network protocols to monitor
+packetbeat.protocols:
+  - type: icmp
+    enabled: true
+    
+  - type: dhcpv4
+    ports: [67, 68]
+    
+  - type: dns
+    ports: [53]
+    include_authorities: true
+    include_additionals: true
+    
+  - type: http
+    ports: [80, 8080, 8000, 5000, 8002]
+    send_request: true
+    send_response: true
+    
+  - type: tls
+    ports: [443, 993, 995, 5061, 8443]
+    send_certificates: true
+    
+  - type: smb
+    ports: [139, 445]
+    send_request: true
+    send_response: true
+    
+  # Monitor for RDP connections (lateral movement)
+  - type: tcp
+    ports: [3389]
+    send_request: false
+    send_response: false
+
+# Network flows for traffic analysis
+packetbeat.flows:
+  timeout: 30s
+  period: 10s
+  
+# Processors for enrichment
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_fields:
+      target: agent
+      fields:
+        type: packetbeat
+        
+  # Detect suspicious network activity
+  - script:
+      lang: javascript
+      source: >
+        function process(event) {
+          var destPort = event.Get("destination.port");
+          var srcPort = event.Get("source.port");
+          var bytes = event.Get("network.bytes");
+          var protocol = event.Get("network.protocol");
+          
+          // Flag SMB traffic (lateral movement indicator)
+          if (destPort === 445 || destPort === 139 || srcPort === 445 || srcPort === 139) {
+            event.Put("threat.indicator.type", "smb_traffic");
+            event.Put("mitre.technique", "T1021.002");
+            event.Put("mitre.tactic", "Lateral Movement");
+            event.Tag("lateral_movement_indicator");
+          }
+          
+          // Flag RDP traffic
+          if (destPort === 3389 || srcPort === 3389) {
+            event.Put("threat.indicator.type", "rdp_traffic");
+            event.Put("mitre.technique", "T1021.001");
+            event.Put("mitre.tactic", "Lateral Movement");
+            event.Tag("rdp_connection");
+          }
+          
+          // Flag large data transfers (potential exfiltration)
+          if (bytes && bytes > 10485760) {  // 10MB
+            event.Put("threat.indicator.type", "large_data_transfer");
+            event.Put("mitre.technique", "T1041");
+            event.Put("mitre.tactic", "Exfiltration");
+            event.Tag("potential_exfiltration");
+          }
+          
+          // Flag DNS over non-standard ports (tunneling)
+          if (protocol === "dns" && destPort !== 53) {
+            event.Put("threat.indicator.type", "dns_tunneling");
+            event.Put("mitre.technique", "T1071.004");
+            event.Put("mitre.tactic", "Command and Control");
+            event.Tag("c2_indicator");
+          }
+          
+          // Flag connections to uncommon ports
+          var uncommonPorts = [4444, 5555, 6666, 7777, 8888, 9999, 31337];
+          if (uncommonPorts.includes(destPort)) {
+            event.Put("threat.indicator.type", "uncommon_port");
+            event.Tag("suspicious_port");
+          }
+          
+          return event;
+        }
+
+# Output to Logstash
+output.logstash:
+  hosts: ["logstash:5044"]
+  
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/packetbeat
+  name: packetbeat
+  keepfiles: 7
+  permissions: 0644

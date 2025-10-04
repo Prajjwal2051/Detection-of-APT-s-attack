@@ -1,0 +1,214 @@
+{
+  "name": "Internal Reconnaissance Detection",
+  "description": "Detects reconnaissance activities including network enumeration, user/group enumeration, and system discovery",
+  "mitre_attack": {
+    "tactic": "Discovery",
+    "techniques": ["T1087", "T1018", "T1082", "T1016", "T1049", "T1057", "T1069"]
+  },
+  "severity": "medium",
+  "queries": [
+    {
+      "rule_name": "Network Reconnaissance Commands",
+      "description": "Detects common network reconnaissance commands",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "message": ".*\\b(net view|net user|net group|net localgroup|nltest|dsquery)\\b.*"
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*\\b(net view|net user|net group|net localgroup|nltest|dsquery)\\b.*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"message\": \".*\\\\b(net view|net user|net group|net localgroup|nltest|dsquery)\\\\b.*\" } },\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*\\\\b(net view|net user|net group|net localgroup|nltest|dsquery)\\\\b.*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "System Reconnaissance Commands",
+      "description": "Detects system information gathering commands",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "message": ".*\\b(whoami|hostname|ipconfig|systeminfo|netstat|tasklist|qwinsta)\\b.*"
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*\\b(whoami|hostname|ipconfig|systeminfo|netstat|tasklist|qwinsta)\\b.*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"message\": \".*\\\\b(whoami|hostname|ipconfig|systeminfo|netstat|tasklist|qwinsta)\\\\b.*\" } },\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*\\\\b(whoami|hostname|ipconfig|systeminfo|netstat|tasklist|qwinsta)\\\\b.*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Active Directory Reconnaissance",
+      "description": "Detects Active Directory enumeration activities",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*(dsquery|adfind|ldapsearch|Get-ADUser|Get-ADComputer|Get-ADGroup).*"
+              }
+            },
+            {
+              "match": {
+                "winlog.event_data.Image": "*\\adfind.exe"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*(dsquery|adfind|ldapsearch|Get-ADUser|Get-ADComputer|Get-ADGroup).*\" } },\n        { \"match\": { \"winlog.event_data.Image\": \"*\\\\adfind.exe\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Network Scanning Activity",
+      "description": "Detects network scanning tools and activities",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.Image": ".*(nmap|masscan|angry ip scanner|advanced port scanner).*"
+              }
+            },
+            {
+              "regexp": {
+                "message": ".*(nmap|masscan|portscan).*"
+              }
+            },
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "winlog.event_id": 3
+                    }
+                  },
+                  {
+                    "script": {
+                      "script": {
+                        "source": "doc['destination.port'].size() > 10",
+                        "lang": "painless"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.Image\": \".*(nmap|masscan|angry ip scanner|advanced port scanner).*\" } },\n        { \"regexp\": { \"message\": \".*(nmap|masscan|portscan).*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Multiple Reconnaissance Commands in Short Time",
+      "description": "Detects multiple reconnaissance commands from same host within short timeframe",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "@timestamp": {
+                  "gte": "now-5m"
+                }
+              }
+            },
+            {
+              "term": {
+                "threat_detected": "reconnaissance"
+              }
+            }
+          ]
+        }
+      },
+      "aggregation": {
+        "size": 0,
+        "aggs": {
+          "by_host": {
+            "terms": {
+              "field": "host.name.keyword",
+              "size": 20
+            },
+            "aggs": {
+              "command_count": {
+                "value_count": {
+                  "field": "message.keyword"
+                }
+              },
+              "unique_commands": {
+                "cardinality": {
+                  "field": "winlog.event_data.CommandLine.keyword"
+                }
+              },
+              "alert_if_multiple": {
+                "bucket_selector": {
+                  "buckets_path": {
+                    "count": "command_count"
+                  },
+                  "script": "params.count >= 3"
+                }
+              }
+            }
+          }
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"size\": 0,\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"range\": { \"@timestamp\": { \"gte\": \"now-5m\" } } },\n        { \"term\": { \"threat_detected\": \"reconnaissance\" } }\n      ]\n    }\n  },\n  \"aggs\": {\n    \"by_host\": {\n      \"terms\": { \"field\": \"host.name.keyword\", \"size\": 20 },\n      \"aggs\": {\n        \"command_count\": { \"value_count\": { \"field\": \"message.keyword\" } },\n        \"unique_commands\": { \"cardinality\": { \"field\": \"winlog.event_data.CommandLine.keyword\" } },\n        \"alert_if_multiple\": {\n          \"bucket_selector\": {\n            \"buckets_path\": { \"count\": \"command_count\" },\n            \"script\": \"params.count >= 3\"\n          }\n        }\n      }\n    }\n  }\n}"
+    }
+  ],
+  "watch_example": {
+    "description": "Elasticsearch Watcher to alert on reconnaissance activity",
+    "trigger": {
+      "schedule": {
+        "interval": "5m"
+      }
+    },
+    "input": {
+      "search": {
+        "request": {
+          "indices": ["apt-detection-*"],
+          "body": {
+            "query": {
+              "bool": {
+                "must": [
+                  {
+                    "range": {
+                      "@timestamp": {
+                        "gte": "now-5m"
+                      }
+                    }
+                  },
+                  {
+                    "term": {
+                      "threat_detected": "reconnaissance"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "condition": {
+      "compare": {
+        "ctx.payload.hits.total": {
+          "gte": 3
+        }
+      }
+    }
+  }
+}

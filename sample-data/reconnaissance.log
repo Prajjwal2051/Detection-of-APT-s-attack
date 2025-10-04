@@ -1,0 +1,9 @@
+2024-01-15T09:15:22Z hostname=VICTIM-PC command="whoami /all" user=compromised_user
+2024-01-15T09:16:34Z hostname=VICTIM-PC command="net user /domain" user=compromised_user
+2024-01-15T09:17:45Z hostname=VICTIM-PC command="net group 'Domain Admins' /domain" user=compromised_user
+2024-01-15T09:18:56Z hostname=VICTIM-PC command="nltest /domain_trusts" user=compromised_user
+2024-01-15T09:20:12Z hostname=VICTIM-PC command="netstat -ano" user=compromised_user
+2024-01-15T09:21:23Z hostname=VICTIM-PC command="tasklist /v" user=compromised_user
+2024-01-15T09:22:34Z hostname=VICTIM-PC command="ipconfig /all" user=compromised_user
+2024-01-15T09:23:45Z hostname=VICTIM-PC command="net view /domain" user=compromised_user
+2024-01-15T09:24:56Z hostname=VICTIM-PC command="dsquery user" user=compromised_user

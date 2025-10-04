@@ -1,0 +1,6 @@
+2024-01-15T11:30:15Z hostname=VICTIM-PC event_id=4624 logon_type=10 source_ip=192.168.1.100 target_user=ADMIN workstation=ATTACKER-PC
+2024-01-15T11:31:22Z hostname=DC01 event_id=4624 logon_type=3 source_ip=192.168.1.100 target_user=ADMIN workstation=VICTIM-PC
+2024-01-15T11:32:33Z hostname=FILESERVER event_id=5140 share_name=\\\\FILESERVER\\C$ source_ip=192.168.1.100 user=ADMIN
+2024-01-15T11:33:44Z hostname=VICTIM-PC process=psexec.exe command="psexec.exe \\\\FILESERVER cmd.exe" user=ADMIN
+2024-01-15T11:34:55Z hostname=FILESERVER event_id=7045 service_name=PSEXESVC image_path="C:\\Windows\\PSEXESVC.exe"
+2024-01-15T11:35:06Z hostname=VICTIM-PC wmic_command="wmic /node:FILESERVER process call create 'cmd.exe'" user=ADMIN

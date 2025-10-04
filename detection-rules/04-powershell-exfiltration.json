@@ -1,0 +1,303 @@
+{
+  "name": "PowerShell Execution and Data Exfiltration Detection",
+  "description": "Detects malicious PowerShell execution and data exfiltration activities",
+  "mitre_attack": {
+    "tactics": ["Execution", "Exfiltration"],
+    "techniques": ["T1059.001", "T1041", "T1048", "T1020"]
+  },
+  "severity": "high",
+  "queries": [
+    {
+      "rule_name": "Encoded PowerShell Command",
+      "description": "Detects Base64 encoded PowerShell commands often used to evade detection",
+      "mitre_technique": "T1059.001",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*-[Ee]nc.*[A-Za-z0-9+/]{50,}.*"
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.ScriptBlockText": ".*FromBase64String.*"
+              }
+            },
+            {
+              "regexp": {
+                "message": ".*powershell.*-enc.*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*-[Ee]nc.*[A-Za-z0-9+/]{50,}.*\" } },\n        { \"regexp\": { \"winlog.event_data.ScriptBlockText\": \".*FromBase64String.*\" } },\n        { \"regexp\": { \"message\": \".*powershell.*-enc.*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "PowerShell Download Cradle",
+      "description": "Detects PowerShell download cradles used to download and execute malicious payloads",
+      "mitre_technique": "T1059.001",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "regexp": {
+                "winlog.provider_name": ".*PowerShell.*"
+              }
+            }
+          ],
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.ScriptBlockText": ".*(Invoke-WebRequest|IWR|wget|curl|DownloadString|DownloadFile|Net\\.WebClient).*"
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*(Invoke-WebRequest|IWR|DownloadString|DownloadFile).*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"regexp\": { \"winlog.provider_name\": \".*PowerShell.*\" } }\n      ],\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.ScriptBlockText\": \".*(Invoke-WebRequest|IWR|wget|curl|DownloadString|DownloadFile|Net\\\\.WebClient).*\" } },\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*(Invoke-WebRequest|IWR|DownloadString|DownloadFile).*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "PowerShell Invoke-Expression",
+      "description": "Detects use of Invoke-Expression (IEX) which is commonly used to execute malicious code",
+      "mitre_technique": "T1059.001",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "regexp": {
+                "winlog.provider_name": ".*PowerShell.*"
+              }
+            }
+          ],
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.ScriptBlockText": ".*(Invoke-Expression|IEX).*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"regexp\": { \"winlog.provider_name\": \".*PowerShell.*\" } }\n      ],\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.ScriptBlockText\": \".*(Invoke-Expression|IEX).*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "PowerShell Reflection",
+      "description": "Detects PowerShell reflection techniques used to load assemblies and bypass security",
+      "mitre_technique": "T1059.001",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.ScriptBlockText": ".*(System\\.Reflection|[Reflection\\.Assembly]::Load).*"
+              }
+            },
+            {
+              "regexp": {
+                "winlog.event_data.ScriptBlockText": ".*(System\\.Runtime\\.InteropServices|Add-Type).*"
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.ScriptBlockText\": \".*(System\\\\.Reflection|[Reflection\\\\.Assembly]::Load).*\" } },\n        { \"regexp\": { \"winlog.event_data.ScriptBlockText\": \".*(System\\\\.Runtime\\\\.InteropServices|Add-Type).*\" } }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Large Outbound Data Transfer",
+      "description": "Detects large outbound data transfers that may indicate data exfiltration",
+      "mitre_technique": "T1041",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "network.bytes": {
+                  "gte": 10485760
+                }
+              }
+            },
+            {
+              "term": {
+                "network.direction": "outbound"
+              }
+            }
+          ]
+        }
+      },
+      "aggregation": {
+        "size": 0,
+        "aggs": {
+          "by_destination": {
+            "terms": {
+              "field": "destination.ip",
+              "size": 20
+            },
+            "aggs": {
+              "total_bytes": {
+                "sum": {
+                  "field": "network.bytes"
+                }
+              },
+              "unique_sources": {
+                "cardinality": {
+                  "field": "source.ip"
+                }
+              }
+            }
+          }
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"size\": 0,\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"range\": { \"network.bytes\": { \"gte\": 10485760 } } },\n        { \"term\": { \"network.direction\": \"outbound\" } }\n      ]\n    }\n  },\n  \"aggs\": {\n    \"by_destination\": {\n      \"terms\": { \"field\": \"destination.ip\", \"size\": 20 },\n      \"aggs\": {\n        \"total_bytes\": { \"sum\": { \"field\": \"network.bytes\" } },\n        \"unique_sources\": { \"cardinality\": { \"field\": \"source.ip\" } }\n      }\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "Data Exfiltration Over Uncommon Protocol",
+      "description": "Detects data transfer over uncommon protocols or ports",
+      "mitre_technique": "T1048",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "network.bytes": {
+                  "gte": 1048576
+                }
+              }
+            },
+            {
+              "terms": {
+                "destination.port": [21, 22, 69, 873, 2049, 3000, 8000, 8080, 8888, 9999]
+              }
+            }
+          ]
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        { \"range\": { \"network.bytes\": { \"gte\": 1048576 } } },\n        { \"terms\": { \"destination.port\": [21, 22, 69, 873, 2049, 3000, 8000, 8080, 8888, 9999] } }\n      ]\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "DNS Tunneling Detection",
+      "description": "Detects potential DNS tunneling for data exfiltration or C2 communication",
+      "mitre_technique": "T1071.004",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "network.protocol": "dns"
+                    }
+                  },
+                  {
+                    "range": {
+                      "dns.question.name.length": {
+                        "gte": 50
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "network.protocol": "dns"
+                    }
+                  },
+                  {
+                    "script": {
+                      "script": {
+                        "source": "doc['destination.port'].value != 53",
+                        "lang": "painless"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "aggregation": {
+        "size": 0,
+        "aggs": {
+          "dns_queries_per_host": {
+            "terms": {
+              "field": "source.ip",
+              "size": 50
+            },
+            "aggs": {
+              "query_count": {
+                "value_count": {
+                  "field": "dns.question.name.keyword"
+                }
+              },
+              "unique_domains": {
+                "cardinality": {
+                  "field": "dns.question.name.keyword"
+                }
+              },
+              "alert_threshold": {
+                "bucket_selector": {
+                  "buckets_path": {
+                    "count": "query_count"
+                  },
+                  "script": "params.count >= 100"
+                }
+              }
+            }
+          }
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"size\": 0,\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        {\n          \"bool\": {\n            \"must\": [\n              { \"term\": { \"network.protocol\": \"dns\" } },\n              { \"range\": { \"dns.question.name.length\": { \"gte\": 50 } } }\n            ]\n          }\n        }\n      ],\n      \"minimum_should_match\": 1\n    }\n  },\n  \"aggs\": {\n    \"dns_queries_per_host\": {\n      \"terms\": { \"field\": \"source.ip\", \"size\": 50 },\n      \"aggs\": {\n        \"query_count\": { \"value_count\": { \"field\": \"dns.question.name.keyword\" } },\n        \"unique_domains\": { \"cardinality\": { \"field\": \"dns.question.name.keyword\" } },\n        \"alert_threshold\": {\n          \"bucket_selector\": {\n            \"buckets_path\": { \"count\": \"query_count\" },\n            \"script\": \"params.count >= 100\"\n          }\n        }\n      }\n    }\n  }\n}"
+    },
+    {
+      "rule_name": "PowerShell Remoting",
+      "description": "Detects PowerShell remoting which can be used for lateral movement",
+      "mitre_technique": "T1021.006",
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "regexp": {
+                "winlog.event_data.CommandLine": ".*(Enter-PSSession|Invoke-Command|New-PSSession).*"
+              }
+            },
+            {
+              "bool": {
+                "must": [
+                  {
+                    "terms": {
+                      "destination.port": [5985, 5986]
+                    }
+                  },
+                  {
+                    "term": {
+                      "event.category": "network"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      "elasticsearch_dsl": "GET /apt-detection-*/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"should\": [\n        { \"regexp\": { \"winlog.event_data.CommandLine\": \".*(Enter-PSSession|Invoke-Command|New-PSSession).*\" } },\n        {\n          \"bool\": {\n            \"must\": [\n              { \"terms\": { \"destination.port\": [5985, 5986] } },\n              { \"term\": { \"event.category\": \"network\" } }\n            ]\n          }\n        }\n      ],\n      \"minimum_should_match\": 1\n    }\n  }\n}"
+    }
+  ]
+}

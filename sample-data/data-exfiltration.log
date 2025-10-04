@@ -1,0 +1,4 @@
+2024-01-15T14:20:15Z hostname=VICTIM-PC protocol=https destination_ip=185.220.101.45 destination_port=443 bytes_sent=15728640 connection_duration=320s
+2024-01-15T14:25:22Z hostname=VICTIM-PC protocol=ftp destination_ip=185.220.101.45 destination_port=21 bytes_sent=52428800 file=confidential_data.zip
+2024-01-15T14:30:33Z hostname=VICTIM-PC protocol=dns query=aaaabbbbccccddddeeeeffffgggg1234.attacker.com query_length=65 query_count=250
+2024-01-15T14:35:44Z hostname=VICTIM-PC protocol=http destination_ip=185.220.101.45 destination_port=8080 bytes_sent=104857600 user_agent="Mozilla/5.0"
