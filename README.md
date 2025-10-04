@@ -955,12 +955,6 @@ To add new detection rules:
 4. Test with sample data
 5. Document in this README
 
-## License
-
-This project is for educational and research purposes.
-
----
-
 ## 📚 ADDITIONAL RESOURCES
 
 ### Documentation Files
@@ -1245,14 +1239,6 @@ A: By default, indefinitely. Configure ILM to automatically delete old data.
 - [Mordor Security Datasets](https://github.com/OTRF/Security-Datasets)
 - [Sigma Rules](https://github.com/SigmaHQ/sigma)
 - [Atomic Red Team](https://github.com/redcanaryco/atomic-red-team)
-
----
-
-## ⚖️ LICENSE
-
-This project is for **educational and research purposes**.
-
-**MIT License** - Feel free to use, modify, and distribute.
 
 ---
 
