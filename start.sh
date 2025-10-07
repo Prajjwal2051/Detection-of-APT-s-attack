@@ -13,18 +13,175 @@ echo " APT Detection System - Quick Start"
 echo "======================================"
 echo ""
 
-# Check if Docker is installed
+# Function to detect Linux distribution
+detect_distro() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo $ID
+    else
+        echo "unknown"
+    fi
+}
+
+# Function to check system requirements
+check_system_requirements() {
+    echo "🔍 Checking system requirements..."
+    
+    # Check available RAM
+    total_ram=$(free -g | awk '/^Mem:/{print $2}')
+    if [ "$total_ram" -lt 4 ]; then
+        echo "⚠️  Warning: Less than 4GB RAM available. System may be slow."
+        echo "   Available RAM: ${total_ram}GB (Recommended: 4GB+)"
+    else
+        echo "✅ RAM: ${total_ram}GB available"
+    fi
+    
+    # Check available disk space
+    available_disk=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
+    if [ "$available_disk" -lt 10 ]; then
+        echo "⚠️  Warning: Less than 10GB disk space available."
+        echo "   Available: ${available_disk}GB (Recommended: 10GB+)"
+    else
+        echo "✅ Disk Space: ${available_disk}GB available"
+    fi
+    echo ""
+}
+
+# Function to install Docker
+install_docker() {
+    local distro=$(detect_distro)
+    echo "🐳 Installing Docker..."
+    
+    case $distro in
+        fedora)
+            sudo dnf install -y docker
+            ;;
+        ubuntu|debian)
+            sudo apt-get update
+            sudo apt-get install -y docker.io
+            ;;
+        arch|manjaro)
+            sudo pacman -S --noconfirm docker
+            ;;
+        *)
+            echo "❌ Unsupported distribution. Please install Docker manually."
+            exit 1
+            ;;
+    esac
+    
+    # Start and enable Docker service
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    # Add current user to docker group
+    sudo usermod -aG docker $USER
+    echo "✅ Docker installed successfully"
+    echo "⚠️  Note: You may need to log out and back in for group changes to take effect"
+}
+
+# Function to install Docker Compose
+install_docker_compose() {
+    local distro=$(detect_distro)
+    echo "🐳 Installing Docker Compose..."
+    
+    case $distro in
+        fedora)
+            sudo dnf install -y docker-compose
+            ;;
+        ubuntu|debian)
+            sudo apt-get update
+            sudo apt-get install -y docker-compose
+            ;;
+        arch|manjaro)
+            sudo pacman -S --noconfirm docker-compose
+            ;;
+        *)
+            echo "❌ Unsupported distribution. Please install Docker Compose manually."
+            exit 1
+            ;;
+    esac
+    
+    echo "✅ Docker Compose installed successfully"
+}
+
+# Function to install curl
+install_curl() {
+    local distro=$(detect_distro)
+    echo "📥 Installing curl..."
+    
+    case $distro in
+        fedora)
+            sudo dnf install -y curl
+            ;;
+        ubuntu|debian)
+            sudo apt-get update
+            sudo apt-get install -y curl
+            ;;
+        arch|manjaro)
+            sudo pacman -S --noconfirm curl
+            ;;
+        *)
+            echo "⚠️  Could not install curl automatically"
+            ;;
+    esac
+    
+    echo "✅ curl installed successfully"
+}
+
+# Check system requirements
+check_system_requirements
+
+# Check and install Docker
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
-    exit 1
+    echo "❌ Docker is not installed."
+    read -p "Do you want to install Docker now? (y/n): " install_choice
+    if [ "$install_choice" = "y" ] || [ "$install_choice" = "Y" ]; then
+        install_docker
+        echo ""
+        echo "⚠️  IMPORTANT: Please log out and log back in, then run this script again."
+        exit 0
+    else
+        echo "Cannot proceed without Docker. Exiting."
+        exit 1
+    fi
+else
+    echo "✅ Docker is installed"
 fi
 
+# Check and install Docker Compose
 if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
-    exit 1
+    echo "❌ Docker Compose is not installed."
+    read -p "Do you want to install Docker Compose now? (y/n): " install_choice
+    if [ "$install_choice" = "y" ] || [ "$install_choice" = "Y" ]; then
+        install_docker_compose
+    else
+        echo "Cannot proceed without Docker Compose. Exiting."
+        exit 1
+    fi
+else
+    echo "✅ Docker Compose is installed"
 fi
 
-echo "✅ Docker and Docker Compose are installed"
+# Check and install curl
+if ! command -v curl &> /dev/null; then
+    echo "⚠️  curl is not installed (needed for health checks)."
+    read -p "Do you want to install curl now? (y/n): " install_choice
+    if [ "$install_choice" = "y" ] || [ "$install_choice" = "Y" ]; then
+        install_curl
+    else
+        echo "⚠️  Continuing without curl (some health checks may not work)"
+    fi
+else
+    echo "✅ curl is installed"
+fi
+
+# Check if Docker service is running
+if ! sudo systemctl is-active --quiet docker; then
+    echo "🐳 Starting Docker service..."
+    sudo systemctl start docker
+    echo "✅ Docker service started"
+fi
+
 echo ""
 
 # Make scripts executable
